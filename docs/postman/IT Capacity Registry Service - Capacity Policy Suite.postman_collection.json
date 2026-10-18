@@ -1,0 +1,4311 @@
+{
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "exec": [
+          "// Automatically generate standard W3C traceparent (ADR-010) and X-Trace-Id",
+          "function generateHex(len) {",
+          "    let result = '';",
+          "    const chars = '0123456789abcdef';",
+          "    for (let i = 0; i < len; i++) {",
+          "        result += chars.charAt(Math.floor(Math.random() * chars.length));",
+          "    }",
+          "    return result;",
+          "}",
+          "const traceId = generateHex(32);",
+          "const spanId = generateHex(16);",
+          "const traceparent = `00-${traceId}-${spanId}-01`;",
+          "pm.request.headers.upsert({ key: 'traceparent', value: traceparent });",
+          "pm.request.headers.upsert({ key: 'X-Trace-Id', value: traceId });",
+          "pm.environment.set('currentTraceId', traceId);"
+        ],
+        "type": "text/javascript"
+      }
+    }
+  ],
+  "info": {
+    "_exporter_id": "39879181",
+    "_postman_id": "b4c6e8a0-3d5f-4b7c-9e1a-0d2f3a4b5c6d",
+    "description": "Enterprise-grade E2E Postman Suite for the IT Capacity Registry Service Domain (BIAN-aligned, ADR-001/005/013/019/030/031/032/033). Creates a capacity policy (a limit, a warning and a critical utilisation, a trend window, a forecast horizon and a reporting interval), reads and lists it with filters, reports samples a day apart (and the same moment again: 200, the stored sample, nothing overwritten), and shows how the policy judges itself when read: no data, OK, the latest sample that does not move back with a late report, a straight-line forecast of 4 days to the limit and the date it would run out, CRITICAL after the limit is tightened, a paused policy not judged, and a tool that went silent marked stale. It updates the definition, pauses and resumes, lists samples newest first with a limit, and reads the audit ledger in order. A second folder proves the registry is staff only (a REQUESTER gets 403 ERR-CAP-00403 on every route). A third covers the negative guarantees: validation (blank or long name, missing asset, metric or limit, numbers out of range, a critical level not above the warning one, an unknown metric that is never repeated in the answer, malformed identifiers, missing tenant or executor), duplicate names (409) on create and on rename, illegal transitions, updating a paused policy, samples that make no sense (negative, missing, in the future), a sample for a policy that is not the tenant's, tenant isolation, the limits of the sample list, and the absence of DELETE, with RFC 7807 error_code assertions. It files everything under its own generated tenant id (capOrganisationId). The race of simultaneous reports of one sample, the latest sample that only moves forward, two people pausing at once and the ledger are proved by the platform smoke (capacity-smoke).",
+    "name": "IT Capacity Registry Service - Capacity Policy Suite",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "item": [
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Health status is UP', () => pm.expect(pm.response.json().status).to.eql('UP'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "Health Check (Aggregated)",
+          "request": {
+            "header": [],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "health"
+              ],
+              "raw": "{{base_url}}/health"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Liveness status is UP or UNKNOWN (no probe contributors registered)', () => pm.expect(['UP', 'UNKNOWN']).to.include(pm.response.json().status));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "Liveness Probe",
+          "request": {
+            "header": [],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "health",
+                "liveness"
+              ],
+              "raw": "{{base_url}}/health/liveness"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Readiness status is UP', () => pm.expect(pm.response.json().status).to.eql('UP'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "Readiness Probe",
+          "request": {
+            "header": [],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "health",
+                "readiness"
+              ],
+              "raw": "{{base_url}}/health/readiness"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Contains JVM metrics', () => pm.expect(pm.response.text()).to.include('jvm_memory'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "Prometheus Metrics",
+          "request": {
+            "header": [],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "prometheus"
+              ],
+              "raw": "{{base_url}}/prometheus"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Returns Swagger UI HTML', () => pm.expect(pm.response.text()).to.include('swagger-ui'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "Swagger UI",
+          "request": {
+            "header": [],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "swagger-ui",
+                "index.html"
+              ],
+              "raw": "{{base_url}}/swagger-ui/index.html"
+            }
+          }
+        }
+      ],
+      "name": "00. Infrastructure & Telemetry"
+    },
+    {
+      "item": [
+        {
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.environment.set('capOrganisationId', pm.variables.replaceIn('{{$guid}}'));",
+                  "pm.environment.set('capUserId', pm.variables.replaceIn('{{$guid}}'));",
+                  "pm.environment.set('capOtherTenantId', pm.variables.replaceIn('{{$guid}}'));",
+                  "pm.environment.set('capAssetId', pm.variables.replaceIn('{{$guid}}'));",
+                  "const now = Date.now();",
+                  "const daysAgo = (d) => new Date(now - d * 24 * 3600 * 1000).toISOString();",
+                  "pm.environment.set('day4', daysAgo(4));",
+                  "pm.environment.set('day3', daysAgo(3));",
+                  "pm.environment.set('day2', daysAgo(2));",
+                  "pm.environment.set('day1', daysAgo(1));",
+                  "pm.environment.set('day10', daysAgo(10));",
+                  "pm.environment.set('inOneHour', new Date(now + 3600 * 1000).toISOString());"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('ACTIVE, NO_DATA, no forecast yet, not stale', () => {",
+                  "    pm.expect(json.id).to.not.be.undefined;",
+                  "    pm.expect(json.status).to.eql('ACTIVE');",
+                  "    pm.expect(json.level).to.eql('NO_DATA');",
+                  "    pm.expect(json.forecast).to.eql('NOT_ENOUGH_DATA');",
+                  "    pm.expect(json.stale).to.be.false;",
+                  "    pm.expect(json.metric).to.eql('DISK');",
+                  "    pm.expect(json.limit).to.eql(100);",
+                  "    pm.expect(json.lastValue == null).to.be.true;",
+                  "});",
+                  "pm.environment.set('policyId', json.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "01. Initiate a capacity policy (ACTIVE, no data yet)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Orders disk\",\n  \"assetId\": \"{{capAssetId}}\",\n  \"metric\": \"DISK\",\n  \"limit\": 100,\n  \"warnPercent\": 70,\n  \"criticalPercent\": 90,\n  \"windowDays\": 30,\n  \"horizonDays\": 30,\n  \"reportEveryHours\": 24\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('The policy is the tenant\\'s own', () => {",
+                  "    pm.expect(json.id).to.eql(pm.environment.get('policyId'));",
+                  "    pm.expect(json.organisationId).to.eql(pm.environment.get('capOrganisationId'));",
+                  "    pm.expect(json.assetId).to.eql(pm.environment.get('capAssetId'));",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "02. Retrieve the policy by ID",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "{{policyId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/{{policyId}}/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Only ours', () => { pm.expect(json).to.have.lengthOf(1); pm.expect(json[0].id).to.eql(pm.environment.get('policyId')); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "03. List policies filtered by status, asset and metric",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "retrieve"
+              ],
+              "query": [
+                {
+                  "key": "status",
+                  "value": "ACTIVE"
+                },
+                {
+                  "key": "assetId",
+                  "value": "{{capAssetId}}"
+                },
+                {
+                  "key": "metric",
+                  "value": "DISK"
+                }
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/retrieve?status=ACTIVE&assetId={{capAssetId}}&metric=DISK"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.test('A fact: the value and the moment, reported by the tool', () => {",
+                  "    pm.expect(json.value).to.eql(40);",
+                  "    pm.expect(new Date(json.measuredAt).getTime()).to.eql(new Date(pm.environment.get('day3')).getTime());",
+                  "    pm.expect(json.reportedBy).to.eql('disk-agent-1');",
+                  "});",
+                  "pm.environment.set('sampleId', json.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "04. Report the first sample, 40 of 100 three days ago (201, a new sample)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"policyId\": \"{{policyId}}\",\n  \"value\": 40,\n  \"measuredAt\": \"{{day3}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "disk-agent-1"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "sample",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/sample/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Level OK, utilisation 40, the sample is the latest one, no days to the limit', () => {",
+                  "    pm.expect(json.level).to.eql('OK');",
+                  "    pm.expect(json.utilisationPercent).to.eql(40);",
+                  "    pm.expect(json.lastValue).to.eql(40);",
+                  "    pm.expect(json.forecast).to.eql('NOT_ENOUGH_DATA');",
+                  "    pm.expect(json.daysToLimit == null).to.be.true;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "05. One sample draws no line: OK at 40 percent, not enough data for a forecast",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "{{policyId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/{{policyId}}/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('It is the same sample, with its first value', () => { pm.expect(json.id).to.eql(pm.environment.get('sampleId')); pm.expect(json.value).to.eql(40); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "06. Report the same moment again with another value (200, the stored sample, nothing overwritten)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"policyId\": \"{{policyId}}\",\n  \"value\": 99,\n  \"measuredAt\": \"{{day3}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "disk-agent-1"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "sample",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/sample/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "07. Report the second sample, 50 two days ago (201)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"policyId\": \"{{policyId}}\",\n  \"value\": 50,\n  \"measuredAt\": \"{{day2}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "disk-agent-1"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "sample",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/sample/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();",
+                  "pm.environment.set('lastSampleId', json.id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "08. Report the third sample, 60 one day ago (201)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"policyId\": \"{{policyId}}\",\n  \"value\": 60,\n  \"measuredAt\": \"{{day1}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "disk-agent-1"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "sample",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/sample/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('WITHIN_HORIZON, 4 days to the limit from the latest sample, running out four days after it', () => {",
+                  "    pm.expect(json.level).to.eql('OK');",
+                  "    pm.expect(json.utilisationPercent).to.eql(60);",
+                  "    pm.expect(json.forecast).to.eql('WITHIN_HORIZON');",
+                  "    pm.expect(json.daysToLimit).to.be.closeTo(4, 1e-6);",
+                  "    pm.expect(new Date(json.projectedExhaustionAt).getTime()).to.be.closeTo(new Date(pm.environment.get('day1')).getTime() + 4 * 24 * 3600 * 1000, 1000);",
+                  "    pm.expect(json.stale).to.be.false;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "09. Three samples a day apart draw 10 units a day: four days to the limit",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "{{policyId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/{{policyId}}/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "const json = pm.response.json();"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "10. Report a late sample, 30 four days ago (201): the latest one does not move back",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"policyId\": \"{{policyId}}\",\n  \"value\": 30,\n  \"measuredAt\": \"{{day4}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "disk-agent-1"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "sample",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/sample/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Latest is still 60 of one day ago, and the line is still 10 a day', () => {",
+                  "    pm.expect(json.lastValue).to.eql(60);",
+                  "    pm.expect(new Date(json.lastMeasuredAt).getTime()).to.eql(new Date(pm.environment.get('day1')).getTime());",
+                  "    pm.expect(json.daysToLimit).to.be.closeTo(4, 1e-6);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "11. A late sample joins the trend but the latest sample stays",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "{{policyId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/{{policyId}}/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Ours is the one', () => { pm.expect(json).to.have.lengthOf(1); pm.expect(json[0].id).to.eql(pm.environment.get('policyId')); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "12. List policies by level and forecast",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "retrieve"
+              ],
+              "query": [
+                {
+                  "key": "level",
+                  "value": "OK"
+                },
+                {
+                  "key": "forecast",
+                  "value": "WITHIN_HORIZON"
+                }
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/retrieve?level=OK&forecast=WITHIN_HORIZON"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('None', () => pm.expect(pm.response.json()).to.eql([]));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "13. List policies at level CRITICAL (none)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "retrieve"
+              ],
+              "query": [
+                {
+                  "key": "level",
+                  "value": "CRITICAL"
+                }
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/retrieve?level=CRITICAL"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('The sample is ours', () => { pm.expect(json.id).to.eql(pm.environment.get('sampleId')); pm.expect(json.policyId).to.eql(pm.environment.get('policyId')); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "14. Retrieve a sample by ID",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "sample",
+                "{{sampleId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/sample/{{sampleId}}/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Four samples, the newest first', () => pm.expect(json.map(s => s.value)).to.eql([60, 50, 40, 30]));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "15. List the samples of the policy, newest first",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "sample",
+                "retrieve"
+              ],
+              "query": [
+                {
+                  "key": "policyId",
+                  "value": "{{policyId}}"
+                }
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/sample/retrieve?policyId={{policyId}}"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('The two newest', () => pm.expect(pm.response.json().map(s => s.value)).to.eql([60, 50]));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "16. List the samples limited to two",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "sample",
+                "retrieve"
+              ],
+              "query": [
+                {
+                  "key": "policyId",
+                  "value": "{{policyId}}"
+                },
+                {
+                  "key": "limit",
+                  "value": "2"
+                }
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/sample/retrieve?policyId={{policyId}}&limit=2"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 204 No Content', () => pm.response.to.have.status(204));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "17. Update the definition (a limit of 65 puts 60 at 92 percent)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Orders disk, tighter\",\n  \"assetId\": \"{{capAssetId}}\",\n  \"metric\": \"DISK\",\n  \"limit\": 65,\n  \"warnPercent\": 70,\n  \"criticalPercent\": 90,\n  \"windowDays\": 30,\n  \"horizonDays\": 30,\n  \"reportEveryHours\": 24\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "{{policyId}}",
+                "update"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/{{policyId}}/update"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Renamed, CRITICAL, half a day to the limit, the latest sample kept', () => {",
+                  "    pm.expect(json.name).to.eql('Orders disk, tighter');",
+                  "    pm.expect(json.level).to.eql('CRITICAL');",
+                  "    pm.expect(json.utilisationPercent).to.be.closeTo(92.3077, 0.001);",
+                  "    pm.expect(json.daysToLimit).to.be.closeTo(0.5, 1e-6);",
+                  "    pm.expect(json.lastValue).to.eql(60);",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "18. The same sample is now CRITICAL, and running out in half a day",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "{{policyId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/{{policyId}}/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 204 No Content', () => pm.response.to.have.status(204));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "19. Control: pause (ACTIVE -> PAUSED)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "{{policyId}}",
+                "control",
+                "pause"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/{{policyId}}/control/pause"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('PAUSED, no forecast', () => {",
+                  "    pm.expect(json.status).to.eql('PAUSED');",
+                  "    pm.expect(json.level).to.eql('PAUSED');",
+                  "    pm.expect(json.forecast == null).to.be.true;",
+                  "    pm.expect(json.utilisationPercent == null).to.be.true;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "20. A paused policy is not judged",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "{{policyId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/{{policyId}}/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Ours is the one', () => { pm.expect(json).to.have.lengthOf(1); pm.expect(json[0].id).to.eql(pm.environment.get('policyId')); });"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "21. List policies by level (PAUSED)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "retrieve"
+              ],
+              "query": [
+                {
+                  "key": "level",
+                  "value": "PAUSED"
+                }
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/retrieve?level=PAUSED"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 204 No Content', () => pm.response.to.have.status(204));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "22. Control: resume (PAUSED -> ACTIVE)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "{{policyId}}",
+                "control",
+                "resume"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/{{policyId}}/control/resume"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "pm.environment.set('quietPolicyId', pm.response.json().id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "23. A tool that went silent: a second policy with one sample, ten days old",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Quiet disk\",\n  \"assetId\": \"{{capAssetId}}\",\n  \"metric\": \"DISK\",\n  \"limit\": 100,\n  \"warnPercent\": 70,\n  \"criticalPercent\": 90,\n  \"windowDays\": 30,\n  \"horizonDays\": 30,\n  \"reportEveryHours\": 24\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "24. Report 95 of 100 ten days ago for that policy (201)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"policyId\": \"{{quietPolicyId}}\",\n  \"value\": 95,\n  \"measuredAt\": \"{{day10}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "disk-agent-1"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "sample",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/sample/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('Stale after twice the 24 hour interval, CRITICAL at 95, one sample says nothing about the trend', () => {",
+                  "    pm.expect(json.stale).to.be.true;",
+                  "    pm.expect(json.level).to.eql('CRITICAL');",
+                  "    pm.expect(json.forecast).to.eql('NOT_ENOUGH_DATA');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "25. The quiet policy is stale and still CRITICAL on its last known value",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "{{quietPolicyId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/{{quietPolicyId}}/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "const json = pm.response.json();",
+                  "pm.test('INITIATED, UPDATED, PAUSED, RESUMED, each by an executor', () => {",
+                  "    pm.expect(json.map(e => e.action)).to.eql(['INITIATED', 'UPDATED', 'PAUSED', 'RESUMED']);",
+                  "    json.forEach(e => pm.expect(e.executor).to.be.a('string').that.is.not.empty);",
+                  "    pm.expect(json[0].fromStatus == null).to.be.true;",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "26. Read the audit ledger in order",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "{{policyId}}",
+                "audit-log",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/{{policyId}}/audit-log/retrieve"
+            }
+          }
+        }
+      ],
+      "name": "01. Capacity Policy Lifecycle (BIAN Behavior Qualifiers)"
+    },
+    {
+      "item": [
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 403', () => pm.response.to.have.status(403));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-CAP-00403', () => {",
+                  "    pm.expect(json.status).to.eql(403);",
+                  "    pm.expect(json.error_code).to.eql('ERR-CAP-00403');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "01. A REQUESTER cannot create a policy (403)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Requester attempt\",\n  \"assetId\": \"{{capAssetId}}\",\n  \"metric\": \"DISK\",\n  \"limit\": 100,\n  \"warnPercent\": 70,\n  \"criticalPercent\": 90,\n  \"windowDays\": 30,\n  \"horizonDays\": 30,\n  \"reportEveryHours\": 24\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{capUserId}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "REQUESTER"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 403', () => pm.response.to.have.status(403));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-CAP-00403', () => {",
+                  "    pm.expect(json.status).to.eql(403);",
+                  "    pm.expect(json.error_code).to.eql('ERR-CAP-00403');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "02. A REQUESTER cannot read a policy (403)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{capUserId}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "REQUESTER"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "{{policyId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/{{policyId}}/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 403', () => pm.response.to.have.status(403));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-CAP-00403', () => {",
+                  "    pm.expect(json.status).to.eql(403);",
+                  "    pm.expect(json.error_code).to.eql('ERR-CAP-00403');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "03. A REQUESTER cannot list policies (403)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{capUserId}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "REQUESTER"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 403', () => pm.response.to.have.status(403));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-CAP-00403', () => {",
+                  "    pm.expect(json.status).to.eql(403);",
+                  "    pm.expect(json.error_code).to.eql('ERR-CAP-00403');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "04. A REQUESTER cannot update a policy (403)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Requester attempt\",\n  \"assetId\": \"{{capAssetId}}\",\n  \"metric\": \"DISK\",\n  \"limit\": 100,\n  \"warnPercent\": 70,\n  \"criticalPercent\": 90,\n  \"windowDays\": 30,\n  \"horizonDays\": 30,\n  \"reportEveryHours\": 24\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{capUserId}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "REQUESTER"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "{{policyId}}",
+                "update"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/{{policyId}}/update"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 403', () => pm.response.to.have.status(403));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-CAP-00403', () => {",
+                  "    pm.expect(json.status).to.eql(403);",
+                  "    pm.expect(json.error_code).to.eql('ERR-CAP-00403');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "05. A REQUESTER cannot pause a policy (403)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{capUserId}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "REQUESTER"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "{{policyId}}",
+                "control",
+                "pause"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/{{policyId}}/control/pause"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 403', () => pm.response.to.have.status(403));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-CAP-00403', () => {",
+                  "    pm.expect(json.status).to.eql(403);",
+                  "    pm.expect(json.error_code).to.eql('ERR-CAP-00403');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "06. A REQUESTER cannot read an audit trail (403)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{capUserId}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "REQUESTER"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "{{policyId}}",
+                "audit-log",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/{{policyId}}/audit-log/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 403', () => pm.response.to.have.status(403));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-CAP-00403', () => {",
+                  "    pm.expect(json.status).to.eql(403);",
+                  "    pm.expect(json.error_code).to.eql('ERR-CAP-00403');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "07. A REQUESTER cannot report a sample (403)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"policyId\": \"{{policyId}}\",\n  \"value\": 10,\n  \"measuredAt\": \"{{day1}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{capUserId}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "REQUESTER"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "sample",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/sample/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 403', () => pm.response.to.have.status(403));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-CAP-00403', () => {",
+                  "    pm.expect(json.status).to.eql(403);",
+                  "    pm.expect(json.error_code).to.eql('ERR-CAP-00403');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "08. A REQUESTER cannot read a sample (403)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{capUserId}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "REQUESTER"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "sample",
+                "{{sampleId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/sample/{{sampleId}}/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 403', () => pm.response.to.have.status(403));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-CAP-00403', () => {",
+                  "    pm.expect(json.status).to.eql(403);",
+                  "    pm.expect(json.error_code).to.eql('ERR-CAP-00403');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "09. A REQUESTER cannot list samples (403)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{capUserId}}"
+              },
+              {
+                "key": "X-Role",
+                "value": "REQUESTER"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "sample",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/sample/retrieve"
+            }
+          }
+        }
+      ],
+      "name": "02. Staff Only (REQUESTER refused)"
+    },
+    {
+      "item": [
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));",
+                  "pm.environment.set('secondPolicyId', pm.response.json().id);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "00. Setup: a second policy of the tenant, to be renamed onto a taken name",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Second policy\",\n  \"assetId\": \"{{capAssetId}}\",\n  \"metric\": \"DISK\",\n  \"limit\": 100,\n  \"warnPercent\": 70,\n  \"criticalPercent\": 90,\n  \"windowDays\": 30,\n  \"horizonDays\": 30,\n  \"reportEveryHours\": 24\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "01. Initiate - Blank name (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"\",\n  \"assetId\": \"{{capAssetId}}\",\n  \"metric\": \"DISK\",\n  \"limit\": 100,\n  \"warnPercent\": 70,\n  \"criticalPercent\": 90,\n  \"windowDays\": 30,\n  \"horizonDays\": 30,\n  \"reportEveryHours\": 24\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "02. Initiate - Name over 80 characters (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\",\n  \"assetId\": \"{{capAssetId}}\",\n  \"metric\": \"DISK\",\n  \"limit\": 100,\n  \"warnPercent\": 70,\n  \"criticalPercent\": 90,\n  \"windowDays\": 30,\n  \"horizonDays\": 30,\n  \"reportEveryHours\": 24\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "03. Initiate - Missing the asset (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"metric\": \"DISK\",\n  \"limit\": 100,\n  \"warnPercent\": 70,\n  \"criticalPercent\": 90,\n  \"windowDays\": 30,\n  \"horizonDays\": 30,\n  \"reportEveryHours\": 24\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "04. Initiate - Missing the metric (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"assetId\": \"{{capAssetId}}\",\n  \"limit\": 100,\n  \"warnPercent\": 70,\n  \"criticalPercent\": 90,\n  \"windowDays\": 30,\n  \"horizonDays\": 30,\n  \"reportEveryHours\": 24\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "05. Initiate - A limit of zero (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"assetId\": \"{{capAssetId}}\",\n  \"metric\": \"DISK\",\n  \"limit\": 0,\n  \"warnPercent\": 70,\n  \"criticalPercent\": 90,\n  \"windowDays\": 30,\n  \"horizonDays\": 30,\n  \"reportEveryHours\": 24\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "06. Initiate - A negative limit (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"assetId\": \"{{capAssetId}}\",\n  \"metric\": \"DISK\",\n  \"limit\": -5,\n  \"warnPercent\": 70,\n  \"criticalPercent\": 90,\n  \"windowDays\": 30,\n  \"horizonDays\": 30,\n  \"reportEveryHours\": 24\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "07. Initiate - Missing the limit (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"assetId\": \"{{capAssetId}}\",\n  \"metric\": \"DISK\",\n  \"warnPercent\": 70,\n  \"criticalPercent\": 90,\n  \"windowDays\": 30,\n  \"horizonDays\": 30,\n  \"reportEveryHours\": 24\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "08. Initiate - A warning of zero percent (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"assetId\": \"{{capAssetId}}\",\n  \"metric\": \"DISK\",\n  \"limit\": 100,\n  \"warnPercent\": 0,\n  \"criticalPercent\": 90,\n  \"windowDays\": 30,\n  \"horizonDays\": 30,\n  \"reportEveryHours\": 24\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "09. Initiate - A warning of 100 percent (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"assetId\": \"{{capAssetId}}\",\n  \"metric\": \"DISK\",\n  \"limit\": 100,\n  \"warnPercent\": 100,\n  \"criticalPercent\": 100,\n  \"windowDays\": 30,\n  \"horizonDays\": 30,\n  \"reportEveryHours\": 24\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "10. Initiate - A critical level that is not above the warning one (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"assetId\": \"{{capAssetId}}\",\n  \"metric\": \"DISK\",\n  \"limit\": 100,\n  \"warnPercent\": 80,\n  \"criticalPercent\": 80,\n  \"windowDays\": 30,\n  \"horizonDays\": 30,\n  \"reportEveryHours\": 24\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "11. Initiate - A critical level over 100 percent (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"assetId\": \"{{capAssetId}}\",\n  \"metric\": \"DISK\",\n  \"limit\": 100,\n  \"warnPercent\": 70,\n  \"criticalPercent\": 101,\n  \"windowDays\": 30,\n  \"horizonDays\": 30,\n  \"reportEveryHours\": 24\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "12. Initiate - A trend window of zero days (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"assetId\": \"{{capAssetId}}\",\n  \"metric\": \"DISK\",\n  \"limit\": 100,\n  \"warnPercent\": 70,\n  \"criticalPercent\": 90,\n  \"windowDays\": 0,\n  \"horizonDays\": 30,\n  \"reportEveryHours\": 24\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "13. Initiate - A trend window over 90 days (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"assetId\": \"{{capAssetId}}\",\n  \"metric\": \"DISK\",\n  \"limit\": 100,\n  \"warnPercent\": 70,\n  \"criticalPercent\": 90,\n  \"windowDays\": 91,\n  \"horizonDays\": 30,\n  \"reportEveryHours\": 24\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "14. Initiate - A horizon of zero days (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"assetId\": \"{{capAssetId}}\",\n  \"metric\": \"DISK\",\n  \"limit\": 100,\n  \"warnPercent\": 70,\n  \"criticalPercent\": 90,\n  \"windowDays\": 30,\n  \"horizonDays\": 0,\n  \"reportEveryHours\": 24\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "15. Initiate - A horizon over a year (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"assetId\": \"{{capAssetId}}\",\n  \"metric\": \"DISK\",\n  \"limit\": 100,\n  \"warnPercent\": 70,\n  \"criticalPercent\": 90,\n  \"windowDays\": 30,\n  \"horizonDays\": 366,\n  \"reportEveryHours\": 24\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "16. Initiate - A reporting interval of zero hours (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"assetId\": \"{{capAssetId}}\",\n  \"metric\": \"DISK\",\n  \"limit\": 100,\n  \"warnPercent\": 70,\n  \"criticalPercent\": 90,\n  \"windowDays\": 30,\n  \"horizonDays\": 30,\n  \"reportEveryHours\": 0\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "17. Initiate - A reporting interval over 720 hours (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"assetId\": \"{{capAssetId}}\",\n  \"metric\": \"DISK\",\n  \"limit\": 100,\n  \"warnPercent\": 70,\n  \"criticalPercent\": 90,\n  \"windowDays\": 30,\n  \"horizonDays\": 30,\n  \"reportEveryHours\": 721\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "18. Initiate - Malformed asset id (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"assetId\": \"not-a-uuid\",\n  \"metric\": \"DISK\",\n  \"limit\": 100,\n  \"warnPercent\": 70,\n  \"criticalPercent\": 90,\n  \"windowDays\": 30,\n  \"horizonDays\": 30,\n  \"reportEveryHours\": 24\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));",
+                  "pm.test('The answer does not repeat what was sent', () => pm.expect(pm.response.text()).to.not.include('secret-value'));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "19. Initiate - An unknown metric is refused and never repeated (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"assetId\": \"{{capAssetId}}\",\n  \"metric\": \"DISK-secret-value\",\n  \"limit\": 100,\n  \"warnPercent\": 70,\n  \"criticalPercent\": 90,\n  \"windowDays\": 30,\n  \"horizonDays\": 30,\n  \"reportEveryHours\": 24\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "20. Initiate - Missing X-Tenant-Id (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"notenant\",\n  \"assetId\": \"{{capAssetId}}\",\n  \"metric\": \"DISK\",\n  \"limit\": 100,\n  \"warnPercent\": 70,\n  \"criticalPercent\": 90,\n  \"windowDays\": 30,\n  \"horizonDays\": 30,\n  \"reportEveryHours\": 24\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "21. Initiate - Malformed X-Tenant-Id (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"badtenant\",\n  \"assetId\": \"{{capAssetId}}\",\n  \"metric\": \"DISK\",\n  \"limit\": 100,\n  \"warnPercent\": 70,\n  \"criticalPercent\": 90,\n  \"windowDays\": 30,\n  \"horizonDays\": 30,\n  \"reportEveryHours\": 24\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "not-a-uuid"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 409', () => pm.response.to.have.status(409));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-CAP-00409', () => {",
+                  "    pm.expect(json.status).to.eql(409);",
+                  "    pm.expect(json.error_code).to.eql('ERR-CAP-00409');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "22. Initiate - The same name twice in one tenant (409)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Orders disk, tighter\",\n  \"assetId\": \"{{capAssetId}}\",\n  \"metric\": \"DISK\",\n  \"limit\": 100,\n  \"warnPercent\": 70,\n  \"criticalPercent\": 90,\n  \"windowDays\": 30,\n  \"horizonDays\": 30,\n  \"reportEveryHours\": 24\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 201 Created', () => pm.response.to.have.status(201));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "23. Initiate - The same name in another tenant is fine (201)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Orders disk, tighter\",\n  \"assetId\": \"{{capAssetId}}\",\n  \"metric\": \"DISK\",\n  \"limit\": 100,\n  \"warnPercent\": 70,\n  \"criticalPercent\": 90,\n  \"windowDays\": 30,\n  \"horizonDays\": 30,\n  \"reportEveryHours\": 24\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOtherTenantId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 409', () => pm.response.to.have.status(409));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-CAP-00409', () => {",
+                  "    pm.expect(json.status).to.eql(409);",
+                  "    pm.expect(json.error_code).to.eql('ERR-CAP-00409');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "24. Update - Rename onto a name that is taken (409)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Orders disk, tighter\",\n  \"assetId\": \"{{capAssetId}}\",\n  \"metric\": \"DISK\",\n  \"limit\": 100,\n  \"warnPercent\": 70,\n  \"criticalPercent\": 90,\n  \"windowDays\": 30,\n  \"horizonDays\": 30,\n  \"reportEveryHours\": 24\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "{{secondPolicyId}}",
+                "update"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/{{secondPolicyId}}/update"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "25. Update - A critical level not above the warning one (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"n\",\n  \"assetId\": \"{{capAssetId}}\",\n  \"metric\": \"DISK\",\n  \"limit\": 100,\n  \"warnPercent\": 80,\n  \"criticalPercent\": 80,\n  \"windowDays\": 30,\n  \"horizonDays\": 30,\n  \"reportEveryHours\": 24\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "{{policyId}}",
+                "update"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/{{policyId}}/update"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 409', () => pm.response.to.have.status(409));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-CAP-00409', () => {",
+                  "    pm.expect(json.status).to.eql(409);",
+                  "    pm.expect(json.error_code).to.eql('ERR-CAP-00409');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "26. Resume an ACTIVE policy is an illegal transition (409)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "{{policyId}}",
+                "control",
+                "resume"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/{{policyId}}/control/resume"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 204 No Content', () => pm.response.to.have.status(204));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "27. Control: pause, for the next case",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "{{policyId}}",
+                "control",
+                "pause"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/{{policyId}}/control/pause"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 409', () => pm.response.to.have.status(409));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-CAP-00409', () => {",
+                  "    pm.expect(json.status).to.eql(409);",
+                  "    pm.expect(json.error_code).to.eql('ERR-CAP-00409');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "28. Pause a PAUSED policy is an illegal transition (409)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "{{policyId}}",
+                "control",
+                "pause"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/{{policyId}}/control/pause"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 204 No Content', () => pm.response.to.have.status(204));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "29. Update a PAUSED policy is allowed (204)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"name\": \"Orders disk, tighter\",\n  \"assetId\": \"{{capAssetId}}\",\n  \"metric\": \"DISK\",\n  \"limit\": 65,\n  \"warnPercent\": 70,\n  \"criticalPercent\": 90,\n  \"windowDays\": 30,\n  \"horizonDays\": 30,\n  \"reportEveryHours\": 24\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "{{policyId}}",
+                "update"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/{{policyId}}/update"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 204 No Content', () => pm.response.to.have.status(204));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "30. Control: resume, leaving the policy ACTIVE",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "{{policyId}}",
+                "control",
+                "resume"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/{{policyId}}/control/resume"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-CAP-00404', () => {",
+                  "    pm.expect(json.status).to.eql(404);",
+                  "    pm.expect(json.error_code).to.eql('ERR-CAP-00404');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "31. Retrieve - Non-existent policy (404)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "00000000-0000-0000-0000-000000000000",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/00000000-0000-0000-0000-000000000000/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "32. Retrieve - Malformed UUID path (400)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "not-a-uuid",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/not-a-uuid/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-CAP-00404', () => {",
+                  "    pm.expect(json.status).to.eql(404);",
+                  "    pm.expect(json.error_code).to.eql('ERR-CAP-00404');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "33. Retrieve - Another tenant answers like a missing one (404)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOtherTenantId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "{{policyId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/{{policyId}}/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-CAP-00404', () => {",
+                  "    pm.expect(json.status).to.eql(404);",
+                  "    pm.expect(json.error_code).to.eql('ERR-CAP-00404');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "34. Pause - Another tenant (404)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOtherTenantId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "PUT",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "{{policyId}}",
+                "control",
+                "pause"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/{{policyId}}/control/pause"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-CAP-00404', () => {",
+                  "    pm.expect(json.status).to.eql(404);",
+                  "    pm.expect(json.error_code).to.eql('ERR-CAP-00404');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "35. Audit trail - Another tenant (404)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOtherTenantId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "{{policyId}}",
+                "audit-log",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/{{policyId}}/audit-log/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "36. List policies - Unknown level (400)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "retrieve"
+              ],
+              "query": [
+                {
+                  "key": "level",
+                  "value": "BOGUS"
+                }
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/retrieve?level=BOGUS"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "37. List policies - Unknown forecast (400)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "retrieve"
+              ],
+              "query": [
+                {
+                  "key": "forecast",
+                  "value": "BOGUS"
+                }
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/retrieve?forecast=BOGUS"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "38. List policies - Unknown metric (400)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "retrieve"
+              ],
+              "query": [
+                {
+                  "key": "metric",
+                  "value": "BOGUS"
+                }
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/retrieve?metric=BOGUS"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Not allowed', () => pm.expect([404, 405]).to.include(pm.response.code));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "39. Delete - There is no DELETE (404 or 405)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "DELETE",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "{{policyId}}"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/{{policyId}}"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "40. Report a sample - A negative value (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"policyId\": \"{{policyId}}\",\n  \"value\": -1,\n  \"measuredAt\": \"{{day1}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "disk-agent-1"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "sample",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/sample/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "41. Report a sample - Missing the value (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"policyId\": \"{{policyId}}\",\n  \"measuredAt\": \"{{day1}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "disk-agent-1"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "sample",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/sample/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "42. Report a sample - Missing the moment (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"policyId\": \"{{policyId}}\",\n  \"value\": 10\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "disk-agent-1"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "sample",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/sample/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "43. Report a sample - Missing the policy (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"value\": 10,\n  \"measuredAt\": \"{{day1}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "disk-agent-1"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "sample",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/sample/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "44. Report a sample - A sample taken in the future (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"policyId\": \"{{policyId}}\",\n  \"value\": 10,\n  \"measuredAt\": \"{{inOneHour}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "disk-agent-1"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "sample",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/sample/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "45. Report a sample - A value that is not a number (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"policyId\": \"{{policyId}}\",\n  \"value\": \"lots\",\n  \"measuredAt\": \"{{day1}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "disk-agent-1"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "sample",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/sample/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "46. Report a sample - Missing X-Executor (400)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"policyId\": \"{{policyId}}\",\n  \"value\": 10,\n  \"measuredAt\": \"{{day1}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "sample",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/sample/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "exec": [
+                  "pm.environment.set('otherPolicyId', pm.variables.replaceIn('{{$guid}}'));"
+                ],
+                "type": "text/javascript"
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-CAP-00404', () => {",
+                  "    pm.expect(json.status).to.eql(404);",
+                  "    pm.expect(json.error_code).to.eql('ERR-CAP-00404');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "47. Report a sample - A policy that is not the tenant's (404)",
+          "request": {
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"policyId\": \"{{otherPolicyId}}\",\n  \"value\": 10,\n  \"measuredAt\": \"{{day1}}\"\n}"
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "disk-agent-1"
+              }
+            ],
+            "method": "POST",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "sample",
+                "initiate"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/sample/initiate"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-CAP-00404', () => {",
+                  "    pm.expect(json.status).to.eql(404);",
+                  "    pm.expect(json.error_code).to.eql('ERR-CAP-00404');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "48. Retrieve a sample - Non-existent sample (404)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "sample",
+                "00000000-0000-0000-0000-000000000000",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/sample/00000000-0000-0000-0000-000000000000/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 404', () => pm.response.to.have.status(404));",
+                  "const json = pm.response.json();",
+                  "pm.test('RFC 7807 error_code is ERR-CAP-00404', () => {",
+                  "    pm.expect(json.status).to.eql(404);",
+                  "    pm.expect(json.error_code).to.eql('ERR-CAP-00404');",
+                  "});"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "49. Retrieve a sample - Another tenant answers like a missing one (404)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOtherTenantId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "sample",
+                "{{sampleId}}",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/sample/{{sampleId}}/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "50. Retrieve a sample - Malformed UUID path (400)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "sample",
+                "not-a-uuid",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/sample/not-a-uuid/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "51. List samples - A limit of zero (400)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "sample",
+                "retrieve"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "0"
+                }
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/sample/retrieve?limit=0"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 400 Bad Request', () => pm.response.to.have.status(400));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "52. List samples - A limit over 200 (400)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "sample",
+                "retrieve"
+              ],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "201"
+                }
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/sample/retrieve?limit=201"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Status is 200 OK', () => pm.response.to.have.status(200));",
+                  "pm.test('Nothing of ours', () => pm.expect(pm.response.json().some(s => s.id === pm.environment.get('sampleId'))).to.be.false);"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "53. List samples - Another tenant sees none",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOtherTenantId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "GET",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "sample",
+                "retrieve"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/sample/retrieve"
+            }
+          }
+        },
+        {
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "pm.test('Not allowed', () => pm.expect([404, 405]).to.include(pm.response.code));"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "name": "54. Samples cannot be deleted: no DELETE (404 or 405)",
+          "request": {
+            "header": [
+              {
+                "key": "X-Tenant-Id",
+                "value": "{{capOrganisationId}}"
+              },
+              {
+                "key": "X-Executor",
+                "value": "{{executor}}"
+              }
+            ],
+            "method": "DELETE",
+            "url": {
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "it-capacity-registry",
+                "v1",
+                "sample",
+                "{{sampleId}}"
+              ],
+              "raw": "{{base_url}}/it-capacity-registry/v1/sample/{{sampleId}}"
+            }
+          }
+        }
+      ],
+      "name": "03. Negative Tests & Guarantees"
+    }
+  ],
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8107"
+    }
+  ]
+}

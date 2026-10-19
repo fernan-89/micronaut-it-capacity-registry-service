@@ -207,6 +207,50 @@ class CapacityPolicyTest {
         assertEquals(120.0, over.utilisationPercent());
     }
 
+    private Level levelAfter(double latest, double... daysAgoOldestFirstValues) {
+        java.util.ArrayList<Point> points = new java.util.ArrayList<>();
+        for (int i = 0; i < daysAgoOldestFirstValues.length; i++) {
+            points.add(day(daysAgoOldestFirstValues.length - i, daysAgoOldestFirstValues[i]));
+        }
+        points.add(day(0, latest));
+        return stored(PolicyStatus.ACTIVE, latest, NOW, 30).assess(NOW, points).level();
+    }
+
+    @Test
+    @DisplayName("a level is entered at its percentage but left only five points below it, so a value hovering at a threshold does not flip it (ADR-034)")
+    void hysteresis() {
+        // warning at 70, critical at 90
+        assertEquals(Level.WARNING, levelAfter(68, 72));       // 72 entered warning; 68 is still within 5 points of 70
+        assertEquals(Level.OK, levelAfter(64.9, 72));          // 64.9 is below 65: warning is left
+        assertEquals(Level.WARNING, levelAfter(65, 72));       // exactly 5 below stays
+        assertEquals(Level.CRITICAL, levelAfter(86, 92));      // 92 entered critical; 86 is within 5 points of 90
+        assertEquals(Level.WARNING, levelAfter(84.9, 92));     // critical is left, still above 65: warning
+        assertEquals(Level.OK, levelAfter(60, 92));            // a drop below both ends at OK
+        assertEquals(Level.WARNING, levelAfter(88, 92, 66));   // critical left, warning kept: 88 is plainly warning after 66 held warning
+        assertEquals(Level.OK, levelAfter(68, 50, 69));        // never reached warning: 69 and 68 are plainly OK
+        assertEquals(Level.WARNING, levelAfter(70, 69));       // rising is immediate
+        assertEquals(Level.CRITICAL, levelAfter(90, 72));      // and can skip a level
+        assertEquals(Level.WARNING, levelAfter(71, 69.9, 72, 68, 72, 68)); // hovering: stays warning, never flipping back
+    }
+
+    @Test
+    @DisplayName("the latest sample counts even when the window does not hold it, and a window without it replays from nothing")
+    void hysteresisLatestOutsideWindow() {
+        CapacityPolicy policy = stored(PolicyStatus.ACTIVE, 68.0, NOW, 30);
+        assertEquals(Level.WARNING, policy.assess(NOW, List.of(day(3, 50), day(2, 72))).level());
+        assertEquals(Level.OK, policy.assess(NOW, List.of(day(3, 50), day(2, 60))).level());
+        assertEquals(Level.OK, policy.assess(NOW, List.of()).level());
+    }
+
+    @Test
+    @DisplayName("the margin never exceeds half the warning percentage, so a very low warning can still be left")
+    void hysteresisLowWarning() {
+        CapacityPolicy policy = CapacityPolicy.reconstitute(UUID.randomUUID(), org, "Tiny", asset, Metric.OTHER, 100, 4, 90, 30, 30, 24, PolicyStatus.ACTIVE,
+                NOW.minus(Duration.ofDays(40)), NOW.minus(Duration.ofDays(40)), 1.0, NOW, List.of());
+        assertEquals(Level.OK, policy.assess(NOW, List.of(day(1, 5), day(0, 1))).level());
+        assertEquals(Level.WARNING, policy.assess(NOW, List.of(day(1, 5), day(0, 2.1))).level());
+    }
+
     @Test
     @DisplayName("a sample is stale after twice the expected reporting interval, and not before")
     void stale() {

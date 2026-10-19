@@ -16,7 +16,8 @@ is drawn from, and how far ahead running out is worth a warning. A `CapacitySamp
 - **Reporting is idempotent** (ADR-030, ADR-033): the same policy and moment is the same sample. A repeat, or 20 at once, answers the stored
   sample with 200 (a new one is 201); the tool may retry as often as it likes.
 - **The asset is judged when read** (ADR-031), never stored: `level` is `OK`, `WARNING`, `CRITICAL` (the latest sample against the two
-  percentages), `NO_DATA` or `PAUSED` (not judged); `stale` says the tool has been silent for more than twice its expected interval.
+  percentages, with hysteresis: a level is entered at its percentage and left only 5 points below it, ADR-034), `NO_DATA` or `PAUSED`
+  (not judged); `stale` says the tool has been silent for more than twice its expected interval.
 - **A simple forecast** (ADR-031): a least-squares line through the samples of the window gives `forecast` `STABLE` (flat or falling),
   `WITHIN_HORIZON` or `BEYOND_HORIZON`, with `daysToLimit` and `projectedExhaustionAt` counted from the latest sample, or
   `NOT_ENOUGH_DATA` (fewer than two samples, or less than an hour between them). No model beyond the line: a saw-tooth disk will be mis-read.

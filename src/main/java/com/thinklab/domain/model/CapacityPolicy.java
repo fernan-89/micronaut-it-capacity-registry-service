@@ -26,6 +26,9 @@ public class CapacityPolicy {
     /** A trend needs at least this much time between its first and last sample, or two samples a second apart would draw a line to infinity. */
     public static final Duration MIN_TREND_SPAN = Duration.ofHours(1);
 
+    /** A level, once reached, is only left when the utilisation falls this many points below the percentage that entered it (ADR-034). */
+    public static final double HYSTERESIS_POINTS = 5.0;
+
     private static final double SECONDS_PER_DAY = 86400.0;
 
     private final UUID id;
@@ -145,7 +148,7 @@ public class CapacityPolicy {
 
     /**
      * How full the asset is and where it is heading, at that moment (ADR-031). The level is the latest sample against the warning and critical
-     * utilisation; the sample is stale when the tool is silent for more than twice its expected interval. The forecast draws a least-squares line
+     * utilisation, with hysteresis on the way down (ADR-034); the sample is stale when the tool is silent for more than twice its expected interval. The forecast draws a least-squares line
      * through the samples of the window ({@code points}, oldest first), reads its slope in units per day, and counts the days from the latest sample
      * to the limit at that pace: a flat or falling line is stable, and fewer than two samples an hour apart say nothing. Nothing of it is stored.
      */
@@ -157,14 +160,7 @@ public class CapacityPolicy {
             return new Assessment(Level.NO_DATA, null, false, Forecast.NOT_ENOUGH_DATA, null, null);
         }
         double utilisation = lastValue / limit * 100.0;
-        Level level;
-        if (utilisation >= criticalPercent) {
-            level = Level.CRITICAL;
-        } else if (utilisation >= warnPercent) {
-            level = Level.WARNING;
-        } else {
-            level = Level.OK;
-        }
+        Level level = levelWithHysteresis(points);
         boolean stale = now.isAfter(lastMeasuredAt.plus(Duration.ofHours(2L * reportEveryHours)));
         Double slope = slopePerDay(points);
         if (slope == null) {
@@ -177,6 +173,35 @@ public class CapacityPolicy {
         Instant exhaustion = lastMeasuredAt.plusSeconds(Math.round(daysToLimit * SECONDS_PER_DAY));
         Forecast forecast = daysToLimit <= horizonDays ? Forecast.WITHIN_HORIZON : Forecast.BEYOND_HORIZON;
         return new Assessment(level, utilisation, stale, forecast, daysToLimit, exhaustion);
+    }
+
+    /**
+     * The level after replaying the samples of the window, oldest first (ADR-034). It rises as soon as a sample reaches a percentage, but only falls
+     * once the utilisation is {@link #HYSTERESIS_POINTS} below the percentage that entered it, so a value hovering at a threshold does not flip the
+     * level on every read. The first sample has no past and is judged plainly; the latest sample counts even when the window does not hold it.
+     */
+    private Level levelWithHysteresis(List<Point> points) {
+        double margin = Math.min(HYSTERESIS_POINTS, warnPercent / 2.0);
+        Level level = null;
+        for (Point point : points) {
+            level = next(level, point.value() / limit * 100.0, margin);
+        }
+        boolean windowHoldsLatest = !points.isEmpty() && points.get(points.size() - 1).at().equals(lastMeasuredAt);
+        if (!windowHoldsLatest) {
+            level = next(level, lastValue / limit * 100.0, margin);
+        }
+        return level;
+    }
+
+    private Level next(Level previous, double utilisation, double margin) {
+        Level plain = utilisation >= criticalPercent ? Level.CRITICAL : utilisation >= warnPercent ? Level.WARNING : Level.OK;
+        if (previous == null || plain.compareTo(previous) >= 0) {
+            return plain;
+        }
+        if (previous == Level.CRITICAL && utilisation >= criticalPercent - margin) {
+            return Level.CRITICAL;
+        }
+        return utilisation >= warnPercent - margin ? Level.WARNING : Level.OK;
     }
 
     /** The least-squares slope of the points in units per day, or null when there are not enough of them to draw a line. */

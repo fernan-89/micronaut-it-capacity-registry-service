@@ -3,9 +3,11 @@ package com.thinklab.infrastructure.adapter.in.web;
 import com.thinklab.application.dto.request.InitiateCapacityPolicyRequest;
 import com.thinklab.application.dto.request.ReportCapacitySampleRequest;
 import com.thinklab.application.dto.request.UpdateCapacityPolicyRequest;
+import com.thinklab.application.dto.response.PromiseResponse;
 import com.thinklab.application.dto.response.AuditEntryResponse;
 import com.thinklab.application.dto.response.CapacityPolicyResponse;
 import com.thinklab.application.dto.response.CapacitySampleResponse;
+import com.thinklab.application.usecase.RetrievePromisesUseCase;
 import com.thinklab.application.usecase.ControlCapacityPolicyUseCase;
 import com.thinklab.application.usecase.InitiateCapacityPolicyUseCase;
 import com.thinklab.application.usecase.ReportCapacitySampleUseCase;
@@ -66,9 +68,13 @@ public class CapacityRegistryController {
     private final RetrieveCapacitySampleUseCase retrieveSample;
     private final RetrieveCapacitySamplesUseCase retrieveSamples;
 
+    private final RetrievePromisesUseCase retrievePromises;
+
     public CapacityRegistryController(InitiateCapacityPolicyUseCase initiatePolicy, RetrieveCapacityPolicyUseCase retrievePolicy, RetrieveCapacityPoliciesUseCase retrievePolicies,
                                     UpdateCapacityPolicyUseCase updatePolicy, ControlCapacityPolicyUseCase controlPolicy, RetrieveCapacityPolicyAuditLogUseCase policyAuditLog,
-                                    ReportCapacitySampleUseCase reportSample, RetrieveCapacitySampleUseCase retrieveSample, RetrieveCapacitySamplesUseCase retrieveSamples) {
+                                    ReportCapacitySampleUseCase reportSample, RetrieveCapacitySampleUseCase retrieveSample, RetrieveCapacitySamplesUseCase retrieveSamples,
+            RetrievePromisesUseCase retrievePromises) {
+        this.retrievePromises = retrievePromises;
         this.initiatePolicy = initiatePolicy;
         this.retrievePolicy = retrievePolicy;
         this.retrievePolicies = retrievePolicies;
@@ -105,6 +111,16 @@ public class CapacityRegistryController {
                                                         @QueryValue @Nullable PolicyStatus status, @QueryValue @Nullable UUID assetId, @QueryValue @Nullable Metric metric,
                                                         @QueryValue @Nullable Level level, @QueryValue @Nullable Forecast forecast) {
         return Mono.defer(() -> retrievePolicies.execute(UUID.fromString(tenantId), status, assetId, metric, level, forecast, role).collectList());
+    }
+
+    /**
+     * Behavior Qualifier: {@code promises/retrieve} (platform ADR-001, the promises contract). Every broken promise and every one that changed within the days asked
+     * (30 unless asked, 1 to 365), at most {@code limit} of each (500 unless asked, at most 1000).
+     */
+    @Get("/promises/retrieve")
+    public Mono<List<PromiseResponse>> promises(@Header(TENANT_HEADER) @NotBlank String tenantId, @Header(ROLE_HEADER) @Nullable String role,
+                                                @QueryValue @Nullable Integer changedWithinDays, @QueryValue @Nullable Integer limit) {
+        return Mono.defer(() -> retrievePromises.execute(UUID.fromString(tenantId), changedWithinDays, limit, role));
     }
 
     /** Behavior Qualifier: {@code update}. The whole definition again. */

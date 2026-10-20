@@ -302,6 +302,23 @@ public class CapacityPolicy {
     public int getHorizonDays() { return horizonDays; }
     public int getReportEveryHours() { return reportEveryHours; }
     public PolicyStatus getStatus() { return status; }
+    /**
+     * Whether the policy's promise is being kept, given how it was judged (platform ADR-001): broken ({@code CAPACITY_CRITICAL}) at the critical level, kept at
+     * OK or WARNING (a warning is a notice on the screen, not an incident), not judged when paused or without a sample yet.
+     */
+    public static Promise promise(Assessment judged) {
+        return switch (judged.level()) {
+            case CRITICAL -> Promise.broken("CAPACITY_CRITICAL");
+            case OK, WARNING -> Promise.kept();
+            case PAUSED, NO_DATA -> Promise.notJudged();
+        };
+    }
+
+    /** The last moment the policy or the facts it is judged on changed: an update, or the latest sample measured. */
+    public Instant changedAt() {
+        return lastMeasuredAt != null && lastMeasuredAt.isAfter(updatedAt) ? lastMeasuredAt : updatedAt;
+    }
+
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
     public Double getLastValue() { return lastValue; }

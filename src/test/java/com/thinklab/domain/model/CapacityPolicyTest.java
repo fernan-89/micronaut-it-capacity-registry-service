@@ -327,4 +327,29 @@ class CapacityPolicyTest {
         // x counts days forward from the first sample (0..4, mean 2), the mean of y is 53.6: slope = (-2*-13.6 + -1*-1.6 + 0*1.4 + 1*5.4 + 2*8.4) / 10 = 51.0 / 10 = 5.1 per day
         assertEquals((100.0 - 62.0) / 5.1, judged.daysToLimit(), 1e-9);
     }
+
+    @Test
+    @DisplayName("the promise is broken (CAPACITY_CRITICAL) at the critical level, kept at OK or WARNING, and not judged when paused or without a sample (platform ADR-001)")
+    void promise() {
+        assertEquals(Promise.broken("CAPACITY_CRITICAL"), CapacityPolicy.promise(new Assessment(Level.CRITICAL, 95.0, false, Forecast.STABLE, null, null)));
+        assertEquals(Promise.kept(), CapacityPolicy.promise(new Assessment(Level.OK, 40.0, false, Forecast.STABLE, null, null)));
+        assertEquals(Promise.kept(), CapacityPolicy.promise(new Assessment(Level.WARNING, 75.0, false, Forecast.STABLE, null, null)));
+        assertEquals(Promise.notJudged(), CapacityPolicy.promise(new Assessment(Level.PAUSED, null, false, Forecast.NOT_ENOUGH_DATA, null, null)));
+        assertEquals(Promise.notJudged(), CapacityPolicy.promise(new Assessment(Level.NO_DATA, null, false, Forecast.NOT_ENOUGH_DATA, null, null)));
+        assertEquals(Promise.Verdict.BROKEN, Promise.broken("X").verdict());
+        assertEquals("X", Promise.broken("X").code());
+    }
+
+    @Test
+    @DisplayName("a policy changed when it was updated or when its latest sample was measured, whichever is later")
+    void changedAt() {
+        CapacityPolicy sampled = stored(PolicyStatus.ACTIVE, 50.0, NOW.minus(Duration.ofHours(2)), 30);
+        CapacityPolicy noSample = stored(PolicyStatus.ACTIVE, null, null, 30);
+        CapacityPolicy updatedLater = CapacityPolicy.reconstitute(UUID.randomUUID(), org, "P", asset, Metric.DISK, 100, 70, 90, 30, 30, 24, PolicyStatus.ACTIVE, NOW.minus(Duration.ofDays(40)),
+                NOW.minus(Duration.ofHours(1)), 50.0, NOW.minus(Duration.ofDays(3)), List.of());
+
+        assertEquals(NOW.minus(Duration.ofHours(2)), sampled.changedAt());
+        assertEquals(NOW.minus(Duration.ofDays(40)), noSample.changedAt());
+        assertEquals(NOW.minus(Duration.ofHours(1)), updatedLater.changedAt());
+    }
 }

@@ -38,6 +38,7 @@ and, with platform security on, comes from the verified token.
 |---|---|
 | initiate | `POST /it-capacity-registry/v1/initiate` `{"name":"Orders disk","assetId":"<uuid>","metric":"DISK","limit":500,"warnPercent":70,"criticalPercent":90,"windowDays":30,"horizonDays":60,"reportEveryHours":24}` (`metric`: DISK, MEMORY, CPU, NETWORK, LICENSES, OTHER) |
 | retrieve | `GET /it-capacity-registry/v1/{id}/retrieve` (judged now) |
+| promises/retrieve | `GET /it-capacity-registry/v1/promises/retrieve?changedWithinDays=&limit=` (the promises contract, ADR-035: every broken promise and every one that changed lately, each with `verdict`, a fixed `code` when broken, `status` and `changedAt`) |
 | retrieve (collection) | `GET /it-capacity-registry/v1/retrieve?status=&assetId=&metric=&level=&forecast=` (oldest first) |
 | update | `PUT /it-capacity-registry/v1/{id}/update` (the whole definition again, in any status) |
 | control/pause | `PUT /it-capacity-registry/v1/{id}/control/pause` (ACTIVE -> PAUSED: no longer judged) |
@@ -80,7 +81,7 @@ Do not put personal data in a policy name: it is stored with the policy.
 
 001 hexagonal architecture · 005 UUID identity sovereignty and audit tracing · 013 BIAN conventions · 019 HTTP 409 for state conflicts ·
 030 the tool reports, the registry keeps the samples · 031 the asset is judged when read, with a simple linear forecast · 032 staff only ·
-033 guarded writes, unique backstops and expiring samples.
+033 guarded writes, unique backstops and expiring samples · 035 the promises contract.
 
 ## License
 
